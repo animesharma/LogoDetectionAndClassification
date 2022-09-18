@@ -1,6 +1,5 @@
 env/
 og_dataset/
 yolo_dataset/
-yolo_dataset.zip
 rcnn_dataset/
-rcnn_dataset.zip
+*.zip

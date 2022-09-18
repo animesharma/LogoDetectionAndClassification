@@ -1,3 +1,3 @@
 # LogoDetectionAndClassification
 
-This project aims to build a detection and classification system for brand logos in images
+The aim of this project is to build a detection and classification system for brand logos in images

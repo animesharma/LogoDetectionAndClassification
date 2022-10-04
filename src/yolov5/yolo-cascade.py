@@ -15,9 +15,9 @@ import os
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, help='initial weights path', required=True)
+    parser.add_argument('--weights', type=str, help='initial weights path', required=False)
     # parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
-    parser.add_argument('--data', type=str, help='dataset.yaml path', required=True)
+    parser.add_argument('--data', type=str, help='dataset.yaml path', required=False)
     # parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=50, help='total training epochs')
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
@@ -92,36 +92,50 @@ class YOLOInferenceLoader(torch.utils.data.Dataset):
 
 def pipeline():
     args = parse_arguments().parse_args()
-    # train.run(data=args.data, imgsz=args.imgsz, weights=args.weights, device=args.device)
-    model = torch.hub.load('./', 'custom', path=args.saved_path, source='local')
+    # train_yolo(data=args.data, imgsz=args.imgsz, weights=args.weights, device=args.device)
+    train_inference(model_path=args.saved_path, data_path=args.data_dir)
 
     # inference settings
-    model.conf = args.inf_confidence  # confidence threshold (0-1)
-    model.iou = 0.5  # NMS IoU threshold (0-1)
+    # model.conf = args.inf_confidence  # confidence threshold (0-1)
+    # model.iou = 0.5  # NMS IoU threshold (0-1)
+
+
+
+    # cascade_dataset = YOLOInferenceLoader(args.data_dir)
+    # cascade_loader = torch.utils.data.DataLoader(cascade_dataset, shuffle=False, batch_size=1)
+
+
+
+
+def train_yolo(data, imgsz, weights, device):
+    train.run(data=data, imgsz=imgsz, weights=weights, device=device)
+
+
+def train_inference(model_path, data_path):
+    model = torch.hub.load('./', 'custom', path=model_path, source='local')
 
     file_list = []
-    for f in os.listdir(args.data_dir):
+    for f in os.listdir(data_path):
         if f.endswith('.jpg'):
             file_list.append(f)
 
     images = []
     for f in file_list:
-        image = Image.open(os.path.join(args.data_dir, f))
+        image = Image.open(os.path.join(data_path, f))
         images.append(image)
 
-    # cascade_dataset = YOLOInferenceLoader(args.data_dir)
-    # cascade_loader = torch.utils.data.DataLoader(cascade_dataset, shuffle=False, batch_size=1)
+    for idx in range(0, len(file_list), 10):
+        df_final = pd.DataFrame()
+        results = model(images[idx: idx+10], size=640)
+        # results.save()
+        for sub_idx in range(0, 10):
+            df_results = results.pandas().xyxy[sub_idx]
+            df_final = pd.concat([df_final, df_results])
 
-    df_final = pd.DataFrame()
-    # for image in cascade_loader:
-    #     images.append(image)
-    
-    results = model(images[:100], size=640)
-    results.save()
-
-    df_results = results.pandas().xyxy
-    print(df_results)
-    # print(df_final)
+        if os.path.isfile('C:/Users/kunjc/Desktop/LogoDetectionAndClassification/src/yolov5/results.csv'):
+            df_final.to_csv('C:/Users/kunjc/Desktop/LogoDetectionAndClassification/src/yolov5/results.csv', mode='a', header=False)
+        else:
+            df_final.to_csv('C:/Users/kunjc/Desktop/LogoDetectionAndClassification/src/yolov5/results.csv', mode='w', header=True)
 
 if __name__ == "__main__":
     pipeline()

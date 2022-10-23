@@ -13,6 +13,7 @@ from utils.metrics import bbox_iou
 import itertools
 import argparse
 import os
+import sys
 
 
 def parse_arguments():
@@ -97,10 +98,10 @@ def pipeline():
     args = parse_arguments().parse_args()
     # train_yolo(data=args.data, imgsz=args.imgsz, weights=args.weights, device=args.device)
     # stage_one_inference(model_path=args.saved_path, data_path=args.data_dir, yaml_path=args.data)
-    # find_incorrect_images(ground_truth_path=args.data_dir, preds_path=args.pred_path)
     background_images, foreground_images, all_images = split_images(training_data_path=args.data_dir)
     metadata, confidences, files_to_resample, fp_files, fn_files = get_metadata(ground_truth_path=args.data_dir, preds_path=args.pred_path)
-    generate_image_weights(metadata, confidences, files_to_resample, fp_files, fn_files, background_images, foreground_images, all_images)
+    weights = generate_image_weights(args.data_dir, confidences, files_to_resample, fp_files, fn_files, background_images, 
+                                     foreground_images, all_images) 
 
 
 def train_yolo(data, imgsz, weights, device):
@@ -139,8 +140,8 @@ def split_images(training_data_path):
     img_files = [x.split('.')[0] for x in os.listdir(training_data_path) if x.endswith('.jpg')]
     txt_files = [x.split('.')[0] for x in os.listdir(training_data_path) if x.endswith('.txt')]
 
-    background_images = [x + '.jpg' for x in list(set(img_files) - set(txt_files))]
-    foreground_images = [x + '.jpg' for x in txt_files]
+    background_images = list(set(img_files) - set(txt_files))
+    foreground_images = txt_files
     all_images = background_images.extend(foreground_images)
 
     return background_images, foreground_images, all_images
@@ -181,35 +182,28 @@ def get_metadata(ground_truth_path, preds_path):
     return metadata, confidences, files_to_resample, fp_files, fn_files
 
 
-def generate_image_weights(metadata, confidences, files_to_resample, fp_files, fn_files, background_images, foreground_images, all_images):
+def generate_image_weights(files_path, confidences, files_to_resample, fp_files, fn_files, background_images, foreground_images, all_images):
+    weights = {}
+
+    # background images
+    for img in background_images:
+        weights[img + '.jpg'] = 1
+
+    # false positives - background images detected with logos
+    for img in fp_files:
+        weights[img + '.jpg'] = sys.maxsize # change maximum weight
     
+    for img in foreground_images:
+        # false negatives - logo images detected as backgrounds
+        if img in fn_files:
+            weights[img + '.jpg'] = sys.maxsize
+        # files to resample
+        elif img in files_to_resample:
+            weights[img + '.jpg'] = 1 / confidences[img]
+        else:
+            weights[img + '.jpg'] = 1
 
-def find_incorrect_images(ground_truth_path, preds_path):
-    train_files = [x.split('.')[0] for x in os.listdir(ground_truth_path) if x.endswith('.txt')]
-    pred_files = [x.split('.')[0] for x in os.listdir(preds_path)]
-
-    # detecting false positives - txt files in detections but not in ground truth = ignore
-    fp_files = set(pred_files) - set(train_files)
-    # detecting false negatives - txt files in ground truth but not in detections = higher resampling
-    fn_files = set(train_files) - set(pred_files)
-    
-    files_to_resample = []
-    for train_file in train_files:
-        if train_file not in fn_files:
-            train_metadata, detect_metadata = compute_intersection(os.path.join(ground_truth_path, train_file + '.txt'),
-                                            os.path.join(preds_path, train_file + '.txt'))
-
-            if len(train_metadata) == len(detect_metadata):
-                for detection in detect_metadata:
-                    if detection['confidence'] < 0.5:
-                        files_to_resample.append(train_file)
-            else:
-                files_to_resample.append(train_file)
-
-    # ~14% to resample
-    print(len(files_to_resample)) 
-
-    return files_to_resample
+    return weights
 
 
 def compute_intersection(detection_file_1, detection_file_2, iou_threshold=0.5):

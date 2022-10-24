@@ -14,6 +14,8 @@ import itertools
 import argparse
 import os
 import sys
+import shutil
+import random
 
 
 def parse_arguments():
@@ -60,9 +62,9 @@ def parse_arguments():
     parser.add_argument('--artifact_alias', type=str, default='latest', help='Version of dataset artifact to use')
 
     # Saved model arguments
-    parser.add_argument('--saved_path', type=str, help='Path to saved model weights', required=True)
-    parser.add_argument('--data_dir', type=str, help='Path to data directory (not YAML file)', required=True)
-    parser.add_argument('--pred_path', type=str, help='Path to detector predicted labels directory', required=True)
+    parser.add_argument('--saved_path', type=str, help='Path to saved model weights', required=False)
+    parser.add_argument('--data_dir', type=str, help='Path to data directory (not YAML file)', required=False)
+    parser.add_argument('--pred_path', type=str, help='Path to detector predicted labels directory', required=False)
 
 
     # Inference settings
@@ -98,10 +100,12 @@ def pipeline():
     args = parse_arguments().parse_args()
     # train_yolo(data=args.data, imgsz=args.imgsz, weights=args.weights, device=args.device)
     # stage_one_inference(model_path=args.saved_path, data_path=args.data_dir, yaml_path=args.data)
-    background_images, foreground_images, all_images = split_images(training_data_path=args.data_dir)
-    metadata, confidences, files_to_resample, fp_files, fn_files = get_metadata(ground_truth_path=args.data_dir, preds_path=args.pred_path)
-    weights = generate_image_weights(args.data_dir, confidences, files_to_resample, fp_files, fn_files, background_images, 
-                                     foreground_images, all_images) 
+    # background_images, foreground_images, all_images = split_images(training_data_path=args.data_dir)
+    # metadata, confidences, files_to_resample, fp_files, fn_files = get_metadata(ground_truth_path=args.data_dir, preds_path=args.pred_path)
+    # weights = generate_image_weights(args.data_dir, confidences, files_to_resample, fp_files, fn_files, background_images, 
+    #                                  foreground_images, all_images) 
+    # generate_dataset(weights, foreground_images, args.data_dir)
+    train_yolo(data=args.data, imgsz=args.imgsz, weights=args.weights, device=args.device)
 
 
 def train_yolo(data, imgsz, weights, device):
@@ -184,6 +188,7 @@ def get_metadata(ground_truth_path, preds_path):
 
 def generate_image_weights(files_path, confidences, files_to_resample, fp_files, fn_files, background_images, foreground_images, all_images):
     weights = {}
+    min_confidence = min(list(confidences.values()))
 
     # background images
     for img in background_images:
@@ -191,12 +196,12 @@ def generate_image_weights(files_path, confidences, files_to_resample, fp_files,
 
     # false positives - background images detected with logos
     for img in fp_files:
-        weights[img + '.jpg'] = sys.maxsize # change maximum weight
+        weights[img + '.jpg'] = 1 / min_confidence # change maximum weight
     
     for img in foreground_images:
         # false negatives - logo images detected as backgrounds
         if img in fn_files:
-            weights[img + '.jpg'] = sys.maxsize
+            weights[img + '.jpg'] = 1 / min_confidence
         # files to resample
         elif img in files_to_resample:
             weights[img + '.jpg'] = 1 / confidences[img]
@@ -204,6 +209,30 @@ def generate_image_weights(files_path, confidences, files_to_resample, fp_files,
             weights[img + '.jpg'] = 1
 
     return weights
+
+
+def generate_dataset(weights, foreground_images, main_data_path):
+    DATASET_SIZE = 4280
+    path = '/common/users/kcm161/yolo-stage2/'
+    if not os.path.exists(path):
+        os.mkdir(path)
+    if len(os.listdir(path)) != 0:
+        for f in os.listdir(path):
+            os.remove(os.path.join(path, f))
+
+    population = list(weights.keys())
+    weights = list(weights.values())
+    
+    choices = random.choices(population, weights=weights, k=DATASET_SIZE)
+    file_index = 0
+    for choice in choices:
+        if choice.split('.')[0] in foreground_images:
+            shutil.copy2(os.path.join(main_data_path, choice), os.path.join(path, str(file_index) + '.jpg'))
+            shutil.copy2(os.path.join(main_data_path, choice.split('.')[0] + '.txt'), os.path.join(path, str(file_index) + '.txt'))
+        else:
+            shutil.copy2(os.path.join(main_data_path, choice), os.path.join(path, str(file_index) + '.jpg'))
+
+        file_index += 1
 
 
 def compute_intersection(detection_file_1, detection_file_2, iou_threshold=0.5):

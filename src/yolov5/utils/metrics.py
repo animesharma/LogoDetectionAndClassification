@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from utils import TryExcept, threaded
+#from utils import TryExcept, threaded
 
 
 def fitness(x):
@@ -186,7 +186,7 @@ class ConfusionMatrix:
         # fn = self.matrix.sum(0) - tp  # false negatives (missed detections)
         return tp[:-1], fp[:-1]  # remove background class
 
-    @TryExcept('WARNING: ConfusionMatrix plot failure: ')
+    #@TryExcept('WARNING: ConfusionMatrix plot failure: ')
     def plot(self, normalize=True, save_dir='', names=()):
         import seaborn as sn
 
@@ -322,7 +322,7 @@ def wh_iou(wh1, wh2, eps=1e-7):
 # Plots ----------------------------------------------------------------------------------------------------------------
 
 
-@threaded
+#@threaded
 def plot_pr_curve(px, py, ap, save_dir=Path('pr_curve.png'), names=()):
     # Precision-recall curve
     fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)
@@ -345,7 +345,7 @@ def plot_pr_curve(px, py, ap, save_dir=Path('pr_curve.png'), names=()):
     plt.close(fig)
 
 
-@threaded
+#@threaded
 def plot_mc_curve(px, py, save_dir=Path('mc_curve.png'), names=(), xlabel='Confidence', ylabel='Metric'):
     # Metric-confidence curve
     fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)

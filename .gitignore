@@ -3,3 +3,6 @@ og_dataset/
 yolo_dataset/
 rcnn_dataset/
 *.zip
+out/
+*/__pycache__/
+
